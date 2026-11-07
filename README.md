@@ -47,7 +47,7 @@ streamlit run app.py
 ```
 *(También se acepta un solo objeto `{ "nombre": "...", "codigo": "...", "stock": 10 }`)*
 
-### Webhook 2: Guardado en Excel
+### Webhook 2: Guardado en Excel / Google Sheets
 - **Método:** `POST` (application/json)
 - **Cuerpo enviado por la app:**
 ```json
@@ -58,12 +58,16 @@ streamlit run app.py
     {
       "nombre": "Café Colombiano 500g",
       "codigo": "CAF-8921",
-      "stock": 15
+      "stock": 15,
+      "stock_minimo": 3,
+      "precio": 15000.0
     },
     {
       "nombre": "Galletas de Avena 250g",
       "codigo": "GAL-4410",
-      "stock": 30
+      "stock": 30,
+      "stock_minimo": 5,
+      "precio": 4500.0
     }
   ]
 }

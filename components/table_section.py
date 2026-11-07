@@ -30,8 +30,8 @@ def render_table_section():
 
         if not datos_actuales:
             st.info("ℹ️ Aún no hay productos en la tabla. Toma una foto en el panel izquierdo para añadir registros automáticamente.", icon="📷")
-            df_vacio = pd.DataFrame(columns=["nombre", "codigo", "stock"])
-            # Permitir agrega   r manualmente incluso si está vacío
+            df_vacio = pd.DataFrame(columns=["nombre", "codigo", "stock", "stock_minimo", "precio"])
+            # Permitir agregar manualmente incluso si está vacío
             df_editado = st.data_editor(
                 df_vacio,
                 num_rows="dynamic",
@@ -39,7 +39,9 @@ def render_table_section():
                 column_config={
                     "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
                     "codigo": st.column_config.TextColumn("Código / SKU", required=True),
-                    "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1)
+                    "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1),
+                    "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, help="Alarma cuando el stock esté por debajo"),
+                    "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0)
                 },
                 key="empty_editor"
             )
@@ -59,7 +61,9 @@ def render_table_section():
             column_config={
                 "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="medium"),
                 "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="small"),
-                "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small")
+                "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small"),
+                "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, width="small", help="Nivel mínimo antes de generar alarma"),
+                "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="small")
             },
             key="inventory_editor"
         )

@@ -46,10 +46,26 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
                 except (ValueError, TypeError):
                     stock_val = 1
 
+                # Stock Mínimo (por defecto 0 para que el usuario lo edite en la tabla si la IA no lo trae)
+                stock_min_raw = p.get("stock_minimo") or p.get("minimo_stock") or p.get("min_stock") or 0
+                try:
+                    stock_min_val = int(stock_min_raw)
+                except (ValueError, TypeError):
+                    stock_min_val = 0
+
+                # Precio (captura el precio de la factura si viene; si no, 0.0 para editar)
+                precio_raw = p.get("precio") or p.get("price") or p.get("valor") or 0.0
+                try:
+                    precio_val = float(precio_raw)
+                except (ValueError, TypeError):
+                    precio_val = 0.0
+
                 lista_normalizada.append({
                     "nombre": str(nombre_val).strip(),
                     "codigo": str(codigo_val).strip(),
-                    "stock": stock_val
+                    "stock": stock_val,
+                    "stock_minimo": stock_min_val,
+                    "precio": precio_val
                 })
 
             if not lista_normalizada:
