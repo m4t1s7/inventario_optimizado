@@ -15,8 +15,12 @@ def get_secret(key: str, default: str = "") -> str:
     2. os.environ / archivo .env
     3. Valor por defecto proporcionado 
     """
-    if hasattr(st, "secrets") and key in st.secrets:
-        return str(st.secrets[key])
+    try:
+        val = st.secrets.get(key)
+        if val is not None:
+            return str(val)
+    except Exception:
+        pass
     return os.getenv(key, default)
 
 # URLs de los Webhooks de n8n
