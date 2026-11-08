@@ -16,15 +16,15 @@ def render_table_section():
         # Métricas resumidas superiores
         total_items = len(datos_actuales)
         total_stock = sum(item.get("stock", 0) for item in datos_actuales)
+        total_valor = sum(float(item.get("stock", 0)) * float(item.get("precio", 0.0)) for item in datos_actuales)
 
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1: 
             st.metric(label="📦 Productos Registrados", value=f"{total_items} ítems")
         with col_m2:
-            st.metric(label="📊 Stock Total Acumulado", value=f"{total_stock} uds")
+            st.metric(label="📊 Stock Total", value=f"{total_stock} uds")
         with col_m3:
-            estado_label = "Listo para enviar" if total_items > 0 else "Sin registros"
-            st.metric(label="⚡ Estado", value=estado_label)
+            st.metric(label="💰 Valor Total Lote", value=f"${total_valor:,.2f}")
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -36,12 +36,13 @@ def render_table_section():
                 df_vacio,
                 num_rows="dynamic",
                 use_container_width=True,
+                height=260,
                 column_config={
-                    "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
-                    "codigo": st.column_config.TextColumn("Código / SKU", required=True),
-                    "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1),
-                    "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, help="Alarma cuando el stock esté por debajo"),
-                    "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0)
+                    "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="large"),
+                    "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="medium"),
+                    "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1, width="small"),
+                    "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, help="Alarma cuando el stock esté por debajo", width="medium"),
+                    "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="medium")
                 },
                 key="empty_editor"
             )
@@ -58,12 +59,13 @@ def render_table_section():
             df,
             num_rows="dynamic",
             use_container_width=True,
+            height=350,
             column_config={
-                "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="medium"),
-                "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="small"),
+                "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="large"),
+                "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="medium"),
                 "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small"),
-                "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, width="small", help="Nivel mínimo antes de generar alarma"),
-                "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="small")
+                "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, width="medium", help="Nivel mínimo antes de generar alarma"),
+                "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="medium")
             },
             key="inventory_editor"
         )

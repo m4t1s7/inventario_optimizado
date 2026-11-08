@@ -30,7 +30,12 @@ def render_camera_section():
                 imagen_capturada = archivo_subido
                 origen = "archivo"
 
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        # Si hay imagen, ofrecer botón desplegable para inspeccionarla en grande
+        if imagen_capturada:
+            with st.expander("🔍 Ver foto en grande / Zoom", expanded=False):
+                st.image(imagen_capturada, caption="Foto lista para enviar", use_container_width=True)
+
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
         # Botón de Procesar con IA
         col_btn1, col_btn2 = st.columns([1.5, 1])

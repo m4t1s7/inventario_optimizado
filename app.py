@@ -14,15 +14,7 @@ load_custom_css()
 
 
 if "inventory_data" not in st.session_state:
-    st.session_state["inventory_data"] = [
-        {
-            "nombre": "Ejemplo: Café Colombiano 500g",
-            "codigo": "DEMO-001",
-            "stock": 10,
-            "stock_minimo": 3,
-            "precio": 15000.0
-        }
-    ]
+    st.session_state["inventory_data"] = []
 
 
 from components.header import render_header
