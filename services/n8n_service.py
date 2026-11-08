@@ -3,8 +3,10 @@ import random
 import time
 from typing import Any, Dict, List, Tuple
 import requests
+import streamlit as st
 
-from config import N8N_IMAGE_WEBHOOK_URL, N8N_EXCEL_WEBHOOK_URL
+N8N_IMAGE_WEBHOOK_URL = st.secrets.get("N8N_IMAGE_WEBHOOK_URL", "")
+N8N_EXCEL_WEBHOOK_URL = st.secrets.get("N8N_EXCEL_WEBHOOK_URL", "")
 
 
 
