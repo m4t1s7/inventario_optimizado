@@ -44,7 +44,7 @@ with st.sidebar:
     st.markdown("### 💡 Instrucciones:")
     st.markdown(
         """
-        1. **Enfoca tu producto** con la cámara en el panel izquierdo.
+        1. **Sube o captura la foto** de tu factura en el panel izquierdo.
         2. Presiona **✨ Analizar con IA y Agregar**.
         3. Si la IA tuvo algún error, **edita la celda directamente** en la tabla.
         4. Haz clic en **🚀 Confirmar y Enviar a Excel** para procesar el lote.
