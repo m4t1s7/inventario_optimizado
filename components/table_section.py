@@ -49,8 +49,35 @@ def render_table_section():
                 st.rerun()
             return
 
-        # Convertir a DataFrame para el editor visual de Streamlit
-        df = pd.DataFrame(datos_actuales)
+        # --- Migración de esquema: convertir registros con el campo 'codigo' antiguo ---
+        COLUMNAS_ESPERADAS = ["nombre", "codigo_barras", "referencia_proveedor", "stock"]
+        datos_migrados = []
+        for item in datos_actuales:
+            if "codigo" in item and "codigo_barras" not in item and "referencia_proveedor" not in item:
+                # Registro viejo: mover 'codigo' a 'referencia_proveedor'
+                item = {
+                    "nombre":               item.get("nombre", ""),
+                    "codigo_barras":        "",
+                    "referencia_proveedor": item.get("codigo", ""),
+                    "stock":                item.get("stock", 0),
+                }
+            else:
+                # Asegurar que los campos nuevos existen aunque vengan vacíos
+                item = {
+                    "nombre":               item.get("nombre", ""),
+                    "codigo_barras":        item.get("codigo_barras", ""),
+                    "referencia_proveedor": item.get("referencia_proveedor", ""),
+                    "stock":                item.get("stock", 0),
+                }
+            datos_migrados.append(item)
+
+        # Actualizar sesión si hubo migración
+        if datos_migrados != datos_actuales:
+            st.session_state["inventory_data"] = datos_migrados
+            datos_actuales = datos_migrados
+
+        # Convertir a DataFrame — solo las columnas esperadas, en orden correcto
+        df = pd.DataFrame(datos_migrados, columns=COLUMNAS_ESPERADAS)
 
         # Editor de datos interactivo con validación de columnas
         df_editado = st.data_editor(
