@@ -30,17 +30,19 @@ def render_table_section():
 
         if not datos_actuales:
             st.info("ℹ️ Aún no hay productos en la tabla. Toma una foto en el panel izquierdo para añadir registros automáticamente.", icon="📷")
-            df_vacio = pd.DataFrame(columns=["nombre", "codigo_barras", "referencia_proveedor", "stock"])
+            df_vacio = pd.DataFrame(columns=["nombre", "codigo_barras", "referencia_proveedor", "stock", "stock_minimo", "precio"])
             # Permitir agregar manualmente incluso si está vacío
             df_editado = st.data_editor(
                 df_vacio,
                 num_rows="dynamic",
                 use_container_width=True,
                 column_config={
-                    "nombre":               st.column_config.TextColumn("Nombre del Producto",   required=True),
-                    "codigo_barras":        st.column_config.TextColumn("Código de Barras",      required=False, help="EAN-13 u otro código de barras"),
-                    "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor / SKU",  required=False, help="Código interno del proveedor"),
-                    "stock":               st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1)
+                    "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True),
+                    "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, help="EAN-13 u otro código de barras"),
+                    "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",        required=False, help="Código interno del proveedor"),
+                    "stock":               st.column_config.NumberColumn("Stock",         min_value=0, step=1,    required=True,  default=1),
+                    "stock_minimo":         st.column_config.NumberColumn("Stock Mínimo",  min_value=0, step=1,    required=False, default=0),
+                    "precio":              st.column_config.NumberColumn("Precio",         min_value=0, step=0.01, required=False, default=0.0, format="%.2f"),
                 },
                 key="empty_editor"
             )
@@ -49,27 +51,19 @@ def render_table_section():
                 st.rerun()
             return
 
-        # --- Migración de esquema: convertir registros con el campo 'codigo' antiguo ---
-        COLUMNAS_ESPERADAS = ["nombre", "codigo_barras", "referencia_proveedor", "stock"]
+        # --- Migración de esquema: garantizar los 6 campos sin importar el origen ---
+        COLUMNAS_ESPERADAS = ["nombre", "codigo_barras", "referencia_proveedor", "stock", "stock_minimo", "precio"]
         datos_migrados = []
         for item in datos_actuales:
-            if "codigo" in item and "codigo_barras" not in item and "referencia_proveedor" not in item:
-                # Registro viejo: mover 'codigo' a 'referencia_proveedor'
-                item = {
-                    "nombre":               item.get("nombre", ""),
-                    "codigo_barras":        "",
-                    "referencia_proveedor": item.get("codigo", ""),
-                    "stock":                item.get("stock", 0),
-                }
-            else:
-                # Asegurar que los campos nuevos existen aunque vengan vacíos
-                item = {
-                    "nombre":               item.get("nombre", ""),
-                    "codigo_barras":        item.get("codigo_barras", ""),
-                    "referencia_proveedor": item.get("referencia_proveedor", ""),
-                    "stock":                item.get("stock", 0),
-                }
-            datos_migrados.append(item)
+            datos_migrados.append({
+                "nombre":               str(item.get("nombre", "")).strip(),
+                # Compatibilidad con esquema antiguo (campo 'codigo' único)
+                "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", ""))).strip(),
+                "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", ""))).strip(),
+                "stock":               int(item.get("stock", 0)),
+                "stock_minimo":         int(item.get("stock_minimo", item.get("min_stock", 0))),
+                "precio":              float(item.get("precio", item.get("price", 0.0))),
+            })
 
         # Actualizar sesión si hubo migración
         if datos_migrados != datos_actuales:
@@ -86,9 +80,11 @@ def render_table_section():
             use_container_width=True,
             column_config={
                 "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True,  width="large"),
-                "codigo_barras":        st.column_config.TextColumn("Código de Barras",     required=False, width="medium", help="EAN-13 u otro código de barras"),
-                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor / SKU", required=False, width="medium", help="Código interno del proveedor"),
-                "stock":               st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small")
+                "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, width="small",  help="EAN-13 u otro código de barras"),
+                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",        required=False, width="small",  help="Código interno del proveedor"),
+                "stock":               st.column_config.NumberColumn("Stock",        min_value=0, step=1,    required=True,  width="small"),
+                "stock_minimo":         st.column_config.NumberColumn("Stock Mín.",   min_value=0, step=1,    required=False, width="small"),
+                "precio":              st.column_config.NumberColumn("Precio",        min_value=0, step=0.01, required=False, width="small", format="%.2f"),
             },
             key="inventory_editor"
         )

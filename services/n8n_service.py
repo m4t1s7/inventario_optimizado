@@ -7,12 +7,12 @@ import requests
 from config import N8N_IMAGE_WEBHOOK_URL, N8N_EXCEL_WEBHOOK_URL, ENABLE_MOCK_FALLBACK
 
 MOCK_CATALOG = [
-    {"nombre": "Café Grano Especial 500g",       "codigo_barras": "7701234500018", "referencia_proveedor": "CAF-8921", "stock": 18},
-    {"nombre": "Galletas Avena & Miel 250g",       "codigo_barras": "7701234500025", "referencia_proveedor": "GAL-4410", "stock": 35},
-    {"nombre": "Bebida Energética Citrus 473ml",   "codigo_barras": "7701234500032", "referencia_proveedor": "BEB-1093", "stock": 24},
-    {"nombre": "Chocolate Amargo 70% Cacao",        "codigo_barras": "7701234500049", "referencia_proveedor": "",         "stock": 40},
-    {"nombre": "Snack Almendras Tostadas 120g",    "codigo_barras": "",             "referencia_proveedor": "SNK-3382", "stock": 12},
-    {"nombre": "Té Verde Orgánico x20 bolsitas",   "codigo_barras": "7701234500063", "referencia_proveedor": "TE-9901",  "stock": 20},
+    {"nombre": "Café Grano Especial 500g",       "codigo_barras": "7701234500018", "referencia_proveedor": "CAF-8921", "stock": 18, "stock_minimo": 5,  "precio": 12500},
+    {"nombre": "Galletas Avena & Miel 250g",       "codigo_barras": "7701234500025", "referencia_proveedor": "GAL-4410", "stock": 35, "stock_minimo": 10, "precio": 3800},
+    {"nombre": "Bebida Energética Citrus 473ml",   "codigo_barras": "7701234500032", "referencia_proveedor": "BEB-1093", "stock": 24, "stock_minimo": 8,  "precio": 5200},
+    {"nombre": "Chocolate Amargo 70% Cacao",        "codigo_barras": "7701234500049", "referencia_proveedor": "",         "stock": 40, "stock_minimo": 12, "precio": 7900},
+    {"nombre": "Snack Almendras Tostadas 120g",    "codigo_barras": "",             "referencia_proveedor": "SNK-3382", "stock": 12, "stock_minimo": 4,  "precio": 9100},
+    {"nombre": "Té Verde Orgánico x20 bolsitas",   "codigo_barras": "7701234500063", "referencia_proveedor": "TE-9901",  "stock": 20, "stock_minimo": 6,  "precio": 6400},
 ]
 
 def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.jpg") -> Tuple[bool, List[Dict[str, Any]], str, bool]:
@@ -65,14 +65,16 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
                 elif "data" in res_json and isinstance(res_json["data"], list):
                     productos = res_json["data"]
             
-            # Sanitizar campos — ahora con dos códigos opcionales
+            # Sanitizar campos — esquema completo de 6 campos
             lista_normalizada = []
             for p in productos:
                 lista_normalizada.append({
-                    "nombre":                str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
-                    "codigo_barras":         str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
-                    "referencia_proveedor":  str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
-                    "stock":                 int(p.get("stock", p.get("cantidad", p.get("quantity", 1))))
+                    "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
+                    "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
+                    "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
+                    "stock":               int(p.get("stock", p.get("cantidad", p.get("quantity", 1)))),
+                    "stock_minimo":         int(p.get("stock_minimo", p.get("min_stock", p.get("minimo", 0)))),
+                    "precio":               float(p.get("precio", p.get("price", p.get("valor", 0.0))))
                 })
 
             if not lista_normalizada:
