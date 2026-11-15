@@ -26,3 +26,6 @@ def get_secret(key: str, default: str = "") -> str:
 # URLs de los Webhooks de n8n
 N8N_IMAGE_WEBHOOK_URL = get_secret("N8N_IMAGE_WEBHOOK_URL", "")
 N8N_EXCEL_WEBHOOK_URL = get_secret("N8N_EXCEL_WEBHOOK_URL", "")
+
+# Activar modo simulación si no hay URLs reales configuradas
+ENABLE_MOCK_FALLBACK = True
