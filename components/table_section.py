@@ -16,33 +16,31 @@ def render_table_section():
         # Métricas resumidas superiores
         total_items = len(datos_actuales)
         total_stock = sum(item.get("stock", 0) for item in datos_actuales)
-        total_valor = sum(float(item.get("stock", 0)) * float(item.get("precio", 0.0)) for item in datos_actuales)
 
         col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1: 
+        with col_m1:
             st.metric(label="📦 Productos Registrados", value=f"{total_items} ítems")
         with col_m2:
-            st.metric(label="📊 Stock Total", value=f"{total_stock} uds")
+            st.metric(label="📊 Stock Total Acumulado", value=f"{total_stock} uds")
         with col_m3:
-            st.metric(label="💰 Valor Total Lote", value=f"${total_valor:,.2f}")
+            estado_label = "Listo para enviar" if total_items > 0 else "Sin registros"
+            st.metric(label="⚡ Estado", value=estado_label)
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
         if not datos_actuales:
             st.info("ℹ️ Aún no hay productos en la tabla. Toma una foto en el panel izquierdo para añadir registros automáticamente.", icon="📷")
-            df_vacio = pd.DataFrame(columns=["nombre", "codigo", "stock", "stock_minimo", "precio"])
+            df_vacio = pd.DataFrame(columns=["nombre", "codigo_barras", "referencia_proveedor", "stock"])
             # Permitir agregar manualmente incluso si está vacío
             df_editado = st.data_editor(
                 df_vacio,
                 num_rows="dynamic",
                 use_container_width=True,
-                height=260,
                 column_config={
-                    "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="large"),
-                    "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="medium"),
-                    "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1, width="small"),
-                    "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, help="Alarma cuando el stock esté por debajo", width="medium"),
-                    "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="medium")
+                    "nombre":               st.column_config.TextColumn("Nombre del Producto",   required=True),
+                    "codigo_barras":        st.column_config.TextColumn("Código de Barras",      required=False, help="EAN-13 u otro código de barras"),
+                    "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor / SKU",  required=False, help="Código interno del proveedor"),
+                    "stock":               st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, default=1)
                 },
                 key="empty_editor"
             )
@@ -59,13 +57,11 @@ def render_table_section():
             df,
             num_rows="dynamic",
             use_container_width=True,
-            height=350,
             column_config={
-                "nombre": st.column_config.TextColumn("Nombre del Producto", required=True, width="large"),
-                "codigo": st.column_config.TextColumn("Código / SKU", required=True, width="medium"),
-                "stock": st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small"),
-                "stock_minimo": st.column_config.NumberColumn("Mínimo Stock", min_value=0, step=1, default=0, width="medium", help="Nivel mínimo antes de generar alarma"),
-                "precio": st.column_config.NumberColumn("Precio ($)", min_value=0.0, step=0.01, format="$%.2f", default=0.0, width="medium")
+                "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True,  width="large"),
+                "codigo_barras":        st.column_config.TextColumn("Código de Barras",     required=False, width="medium", help="EAN-13 u otro código de barras"),
+                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor / SKU", required=False, width="medium", help="Código interno del proveedor"),
+                "stock":               st.column_config.NumberColumn("Stock", min_value=0, step=1, required=True, width="small")
             },
             key="inventory_editor"
         )

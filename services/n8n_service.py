@@ -3,14 +3,36 @@ import random
 import time
 from typing import Any, Dict, List, Tuple
 import requests
-import streamlit as st
 
-N8N_IMAGE_WEBHOOK_URL = st.secrets.get("N8N_IMAGE_WEBHOOK_URL", "")
-N8N_EXCEL_WEBHOOK_URL = st.secrets.get("N8N_EXCEL_WEBHOOK_URL", "")
+from config import N8N_IMAGE_WEBHOOK_URL, N8N_EXCEL_WEBHOOK_URL, ENABLE_MOCK_FALLBACK
 
-
+MOCK_CATALOG = [
+    {"nombre": "Café Grano Especial 500g",       "codigo_barras": "7701234500018", "referencia_proveedor": "CAF-8921", "stock": 18},
+    {"nombre": "Galletas Avena & Miel 250g",       "codigo_barras": "7701234500025", "referencia_proveedor": "GAL-4410", "stock": 35},
+    {"nombre": "Bebida Energética Citrus 473ml",   "codigo_barras": "7701234500032", "referencia_proveedor": "BEB-1093", "stock": 24},
+    {"nombre": "Chocolate Amargo 70% Cacao",        "codigo_barras": "7701234500049", "referencia_proveedor": "",         "stock": 40},
+    {"nombre": "Snack Almendras Tostadas 120g",    "codigo_barras": "",             "referencia_proveedor": "SNK-3382", "stock": 12},
+    {"nombre": "Té Verde Orgánico x20 bolsitas",   "codigo_barras": "7701234500063", "referencia_proveedor": "TE-9901",  "stock": 20},
+]
 
 def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.jpg") -> Tuple[bool, List[Dict[str, Any]], str, bool]:
+    """
+    Envía la imagen capturada al webhook de n8n para análisis con IA.
+    Retorna: (éxito, lista_de_productos, mensaje_o_error, es_modo_simulacion)
+    """
+    # Si no hay URL configurada o es la de ejemplo, verificar si el usuario tiene activado el fallback de prueba
+    is_placeholder_url = not N8N_IMAGE_WEBHOOK_URL or "tu-instancia-n8n.com" in N8N_IMAGE_WEBHOOK_URL
+    
+    if is_placeholder_url:
+        if ENABLE_MOCK_FALLBACK:
+            # Simular tiempo de respuesta de IA (1.2 segundos) para probar UX
+            time.sleep(1.2)
+            item_aleatorio = random.choice(MOCK_CATALOG).copy()
+            # Añadir variación de stock
+            item_aleatorio["stock"] = random.randint(5, 50)
+            return True, [item_aleatorio], "Detectado en Modo Simulación (Configura tu URL real de n8n en secrets)", True
+        return False, [], "No se ha configurado la URL del Webhook de Imagen (N8N_IMAGE_WEBHOOK_URL).", False
+
     try:
         files = {
             "image": (filename, image_bytes, "image/jpeg")
@@ -29,45 +51,28 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
         if response.status_code in (200, 201):
             res_json = response.json()
             
-            # Extraer lista de productos (compatible con tu nodo de n8n)
-            productos = res_json.get("productos", []) if isinstance(res_json, dict) else res_json
+            # Normalizar respuesta (puede ser lista o diccionario con 'nombre', 'codigo', 'stock')
+            productos = []
+            if isinstance(res_json, list):
+                productos = res_json
+            elif isinstance(res_json, dict):
+                if "items" in res_json and isinstance(res_json["items"], list):
+                    productos = res_json["items"]
+                elif "productos" in res_json and isinstance(res_json["productos"], list):
+                    productos = res_json["productos"]
+                elif "nombre" in res_json:
+                    productos = [res_json]
+                elif "data" in res_json and isinstance(res_json["data"], list):
+                    productos = res_json["data"]
             
-            # Sanitizar campos y manejar posibles valores null (None)
+            # Sanitizar campos — ahora con dos códigos opcionales
             lista_normalizada = []
             for p in productos:
-                # Manejar nombre seguro
-                nombre_val = p.get("nombre") or "Producto Desconocido"
-                
-                # Si el código es null en n8n, asignamos "S/C" (Sin Código) en vez del texto "None"
-                codigo_val = p.get("codigo") or "S/C"
-                
-                # Si el stock viene null o string, asegurar número entero
-                stock_raw = p.get("stock") if p.get("stock") is not None else p.get("cantidad", 1)
-                try:
-                    stock_val = int(stock_raw)
-                except (ValueError, TypeError):
-                    stock_val = 1
-
-                # Stock Mínimo (por defecto 0 para que el usuario lo edite en la tabla si la IA no lo trae)
-                stock_min_raw = p.get("stock_minimo") or p.get("minimo_stock") or p.get("min_stock") or 0
-                try:
-                    stock_min_val = int(stock_min_raw)
-                except (ValueError, TypeError):
-                    stock_min_val = 0
-
-                # Precio (captura el precio de la factura si viene; si no, 0.0 para editar)
-                precio_raw = p.get("precio") or p.get("price") or p.get("valor") or 0.0
-                try:
-                    precio_val = float(precio_raw)
-                except (ValueError, TypeError):
-                    precio_val = 0.0
-
                 lista_normalizada.append({
-                    "nombre": str(nombre_val).strip(),
-                    "codigo": str(codigo_val).strip(),
-                    "stock": stock_val,
-                    "stock_minimo": stock_min_val,
-                    "precio": precio_val
+                    "nombre":                str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
+                    "codigo_barras":         str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
+                    "referencia_proveedor":  str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
+                    "stock":                 int(p.get("stock", p.get("cantidad", p.get("quantity", 1))))
                 })
 
             if not lista_normalizada:
@@ -75,7 +80,7 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
 
             return True, lista_normalizada, f"Se detectaron {len(lista_normalizada)} producto(s) correctamente.", False
         
-        return False, [], f"Error del servidor, por favor intenta nuevamente.", False
+        return False, [], f"Error del servidor n8n (HTTP {response.status_code}): {response.text[:150]}", False
 
     except requests.exceptions.RequestException as e:
         return False, [], f"Error de conexión con n8n: {str(e)}", False
@@ -84,9 +89,20 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
 
 
 def enviar_datos_a_excel_n8n(productos: List[Dict[str, Any]]) -> Tuple[bool, str, bool]:
-    
+    """
+    Envía la tabla de productos confirmados al webhook de n8n para guardarse en Excel.
+    Retorna: (éxito, mensaje, es_modo_simulacion)
+    """
     if not productos:
         return False, "La tabla está vacía. No hay datos para enviar.", False
+
+    is_placeholder_url = not N8N_EXCEL_WEBHOOK_URL or "tu-instancia-n8n.com" in N8N_EXCEL_WEBHOOK_URL
+
+    if is_placeholder_url:
+        if ENABLE_MOCK_FALLBACK:
+            time.sleep(1.0)
+            return True, f"¡Éxito simulado! Se confirmaron {len(productos)} productos para Excel.", True
+        return False, "No se ha configurado la URL del Webhook de Excel (N8N_EXCEL_WEBHOOK_URL).", False
 
     try:
         payload = {
@@ -104,11 +120,11 @@ def enviar_datos_a_excel_n8n(productos: List[Dict[str, Any]]) -> Tuple[bool, str
         )
 
         if response.status_code in (200, 201):
-            return True, f"¡{len(productos)} registros enviados y organizados en Google Sheets con éxito!", False
+            return True, f"¡{len(productos)} registros enviados y organizados en Excel con éxito!", False
         
-        return False, f"Error en webhook de Google Sheets (HTTP {response.status_code}): {response.text[:150]}", False
+        return False, f"Error en webhook de Excel (HTTP {response.status_code}): {response.text[:150]}", False
 
     except requests.exceptions.RequestException as e:
-        return False, f"Fallo al conectar con n8n Google Sheets: {str(e)}", False
+        return False, f"Fallo al conectar con n8n Excel: {str(e)}", False
     except Exception as e:
         return False, f"Error inesperado: {str(e)}", False
