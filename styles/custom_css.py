@@ -14,9 +14,20 @@ def load_custom_css():
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
 
+    /* Ocultar barra superior de Streamlit y panel lateral (protege webhooks y evita solapamiento) */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    section[data-testid="stSidebar"],
+    div[data-testid="collapsedControl"],
+    div[data-testid="stSidebarCollapsedControl"] {
+        display: none !important;
+    }
+
     /* Reducir padding superior excesivo de Streamlit */
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 3rem !important;
         max-width: 95% !important;
     }
