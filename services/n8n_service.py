@@ -4,7 +4,11 @@ import time
 from typing import Any, Dict, List, Tuple
 import requests
 
-from config import N8N_IMAGE_WEBHOOK_URL, N8N_EXCEL_WEBHOOK_URL, ENABLE_MOCK_FALLBACK
+from config import (
+    N8N_IMAGE_WEBHOOK_URL,
+    N8N_EXCEL_WEBHOOK_URL,
+    ENABLE_MOCK_FALLBACK,
+)
 
 MOCK_CATALOG = [
     {"nombre": "Café Grano Especial 500g",       "codigo_barras": "7701234500018", "referencia_proveedor": "CAF-8921", "stock": 18, "stock_minimo": 5,  "precio": 12500},
@@ -15,22 +19,33 @@ MOCK_CATALOG = [
     {"nombre": "Té Verde Orgánico x20 bolsitas",   "codigo_barras": "7701234500063", "referencia_proveedor": "TE-9901",  "stock": 20, "stock_minimo": 6,  "precio": 6400},
 ]
 
-def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.jpg") -> Tuple[bool, List[Dict[str, Any]], str, bool]:
+def extraer_datos_imagen_n8n(
+    image_bytes: bytes,
+    filename: str = "foto_producto.jpg",
+    accion: str = "ingreso",
+) -> Tuple[bool, List[Dict[str, Any]], str, bool]:
     """
     Envía la imagen capturada al webhook de n8n para análisis con IA.
+    accion: "ingreso" | "egreso"
     Retorna: (éxito, lista_de_productos, mensaje_o_error, es_modo_simulacion)
     """
-    # Si no hay URL configurada o es la de ejemplo, verificar si el usuario tiene activado el fallback de prueba
     is_placeholder_url = not N8N_IMAGE_WEBHOOK_URL or "tu-instancia-n8n.com" in N8N_IMAGE_WEBHOOK_URL
     
     if is_placeholder_url:
         if ENABLE_MOCK_FALLBACK:
-            # Simular tiempo de respuesta de IA (1.2 segundos) para probar UX
             time.sleep(1.2)
             item_aleatorio = random.choice(MOCK_CATALOG).copy()
-            # Añadir variación de stock
-            item_aleatorio["stock"] = random.randint(5, 50)
-            return True, [item_aleatorio], "Detectado en Modo Simulación (Configura tu URL real de n8n en secrets)", True
+            if accion == "egreso":
+                item_salida = {
+                    "nombre": item_aleatorio["nombre"],
+                    "codigo_barras": item_aleatorio["codigo_barras"],
+                    "referencia_proveedor": item_aleatorio["referencia_proveedor"],
+                    "cantidad_salida": random.randint(1, 10),
+                }
+                return True, [item_salida], "Detectado en Modo Simulación (Salida / Ventas)", True
+            else:
+                item_aleatorio["stock"] = random.randint(5, 50)
+                return True, [item_aleatorio], "Detectado en Modo Simulación (Configura tu URL real de n8n en secrets)", True
         return False, [], "No se ha configurado la URL del Webhook de Imagen (N8N_IMAGE_WEBHOOK_URL).", False
 
     try:
@@ -38,20 +53,20 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
             "image": (filename, image_bytes, "image/jpeg")
         }
         data = {
-            "source": "streamlit_inventory_scanner"
+            "source": "streamlit_inventory_scanner",
+            "accion": accion,
         }
         
         response = requests.post(
             N8N_IMAGE_WEBHOOK_URL,
             files=files,
             data=data,
-            timeout=30 # La IA puede tardar unos segundos en procesar
+            timeout=30
         )
         
         if response.status_code in (200, 201):
             res_json = response.json()
             
-            # Normalizar respuesta (puede ser lista o diccionario con 'nombre', 'codigo', 'stock')
             productos = []
             if isinstance(res_json, list):
                 productos = res_json
@@ -65,17 +80,28 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
                 elif "data" in res_json and isinstance(res_json["data"], list):
                     productos = res_json["data"]
             
-            # Sanitizar campos — esquema completo de 6 campos
             lista_normalizada = []
             for p in productos:
-                lista_normalizada.append({
-                    "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
-                    "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
-                    "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
-                    "stock":               int(p.get("stock", p.get("cantidad", p.get("quantity", 1)))),
-                    "stock_minimo":         int(p.get("stock_minimo", p.get("min_stock", p.get("minimo", 0)))),
-                    "precio":               float(p.get("precio", p.get("price", p.get("valor", 0.0))))
-                })
+                if accion == "egreso":
+                    cantidad_val = p.get(
+                        "cantidad_salida",
+                        p.get("cantidad_vendida", p.get("cantidad", p.get("stock", p.get("quantity", 1))))
+                    )
+                    lista_normalizada.append({
+                        "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
+                        "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
+                        "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
+                        "cantidad_salida":      int(cantidad_val if cantidad_val is not None else 1),
+                    })
+                else:
+                    lista_normalizada.append({
+                        "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
+                        "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
+                        "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
+                        "stock":                int(p.get("stock", p.get("cantidad", p.get("quantity", 1)))),
+                        "stock_minimo":         int(p.get("stock_minimo", p.get("min_stock", p.get("minimo", 0)))),
+                        "precio":               float(p.get("precio", p.get("price", p.get("valor", 0.0))))
+                    })
 
             if not lista_normalizada:
                 return False, [], "La IA no logró detectar ningún producto legible en la foto.", False
@@ -90,9 +116,13 @@ def extraer_datos_imagen_n8n(image_bytes: bytes, filename: str = "foto_producto.
         return False, [], f"Error al procesar la respuesta: {str(e)}", False
 
 
-def enviar_datos_a_excel_n8n(productos: List[Dict[str, Any]]) -> Tuple[bool, str, bool]:
+def enviar_datos_a_excel_n8n(
+    productos: List[Dict[str, Any]],
+    accion: str = "ingreso",
+) -> Tuple[bool, str, bool]:
     """
-    Envía la tabla de productos confirmados al webhook de n8n para guardarse en Excel.
+    Envía la tabla de productos confirmados al webhook único N8N_EXCEL_WEBHOOK_URL.
+    accion: "ingreso" | "egreso"
     Retorna: (éxito, mensaje, es_modo_simulacion)
     """
     if not productos:
@@ -103,12 +133,13 @@ def enviar_datos_a_excel_n8n(productos: List[Dict[str, Any]]) -> Tuple[bool, str
     if is_placeholder_url:
         if ENABLE_MOCK_FALLBACK:
             time.sleep(1.0)
-            return True, f"¡Éxito simulado! Se confirmaron {len(productos)} productos para Excel.", True
+            return True, f"¡Éxito simulado! Se confirmaron {len(productos)} productos ({accion}) para Excel.", True
         return False, "No se ha configurado la URL del Webhook de Excel (N8N_EXCEL_WEBHOOK_URL).", False
 
     try:
         payload = {
             "evento": "confirmacion_inventario",
+            "accion": accion,
             "total_items": len(productos),
             "productos": productos
         }
@@ -122,7 +153,7 @@ def enviar_datos_a_excel_n8n(productos: List[Dict[str, Any]]) -> Tuple[bool, str
         )
 
         if response.status_code in (200, 201):
-            return True, f"¡{len(productos)} registros enviados y organizados en Excel con éxito!", False
+            return True, f"¡{len(productos)} registros enviados y procesados en Excel con éxito!", False
         
         return False, f"Error en webhook de Excel (HTTP {response.status_code}): {response.text[:150]}", False
 

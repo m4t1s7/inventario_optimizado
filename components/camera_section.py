@@ -45,21 +45,30 @@ def optimizar_imagen(bytes_imagen: bytes, max_dimension: int = 2048, quality: in
         # En caso de error inesperado de lectura, mantener bytes originales
         return bytes_imagen
 
-def render_camera_section():
+def render_camera_section(modo: str = "ingreso"):
     """
     Renderiza el centro de carga primaria de imágenes de alta fidelidad.
-    Permite subir fotos de la galería o capturadas directamente con la cámara del dispositivo.
+    modo: "ingreso" | "salida"
     """
+    es_salida = (modo == "salida")
+    accion = "egreso" if es_salida else "ingreso"
+    session_key = "inventory_data_salida" if es_salida else "inventory_data_ingreso"
+
     with st.container(border=True):
-        st.markdown("### 📸 Carga de Factura o Producto")
-        st.caption("Sube la fotografía tomada con la cámara de tu celular o desde tu galería.")
+        if es_salida:
+            st.markdown("### 📸 Carga de Registro de Ventas / Salida")
+            st.caption("Sube la fotografía de tu reporte de ventas, recibo o listado de salida.")
+        else:
+            st.markdown("### 📸 Carga de Factura o Producto")
+            st.caption("Sube la fotografía tomada con la cámara de tu celular o desde tu galería.")
 
         # Carga principal de archivos (soporta todos los formatos de móvil y PC)
         archivo_subido = st.file_uploader(
             "Selecciona o captura una imagen", 
             type=["jpg", "jpeg", "png", "webp", "heic", "heif"],
             label_visibility="collapsed",
-            help="Sube una foto clara con buena iluminación."
+            help="Sube una foto clara con buena iluminación.",
+            key=f"uploader_{modo}"
         )
 
         st.caption("💡 **Tip en celular:** Toma la foto primero con tu cámara normal y elígela aquí desde tu galería para conservar la máxima nitidez y evitar cierres de navegador.")
@@ -80,7 +89,8 @@ def render_camera_section():
                 "✨ Analizar con IA y Agregar", 
                 type="primary", 
                 use_container_width=True,
-                disabled=(imagen_capturada is None)
+                disabled=(imagen_capturada is None),
+                key=f"btn_analizar_{modo}"
             )
 
         with col_btn2:
@@ -98,14 +108,20 @@ def render_camera_section():
                 # Optimizar compresión y resolución en memoria antes de mandar
                 bytes_optimizados = optimizar_imagen(bytes_originales)
                 
-                nombre_archivo = f"factura_{imagen_capturada.name.split('.')[0]}.jpg" if hasattr(imagen_capturada, 'name') else "factura.jpg"
+                prefijo = "salida" if es_salida else "factura"
+                nombre_archivo = f"{prefijo}_{imagen_capturada.name.split('.')[0]}.jpg" if hasattr(imagen_capturada, 'name') else f"{prefijo}.jpg"
                 
-                exito, productos_extraidos, mensaje, es_mock = extraer_datos_imagen_n8n(bytes_optimizados, nombre_archivo)
+                exito, productos_extraidos, mensaje, es_mock = extraer_datos_imagen_n8n(
+                    bytes_optimizados,
+                    nombre_archivo,
+                    accion=accion
+                )
 
                 if exito:
-                    # Anexar a la lista existente en sesión
+                    if session_key not in st.session_state:
+                        st.session_state[session_key] = []
                     for prod in productos_extraidos:
-                        st.session_state["inventory_data"].append(prod)
+                        st.session_state[session_key].append(prod)
                     
                     st.toast(f"🎉 ¡{len(productos_extraidos)} producto(s) añadidos a la tabla!", icon="✨")
                     st.success(mensaje)

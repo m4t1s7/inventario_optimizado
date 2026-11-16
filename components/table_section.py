@@ -2,126 +2,156 @@ import streamlit as st
 import pandas as pd
 from services.n8n_service import enviar_datos_a_excel_n8n
 
-def render_table_section():
+def render_table_section(modo: str = "ingreso"):
     """
     Renderiza la tabla interactiva de inventario editable, las métricas acumuladas
     y el botón de confirmación para sincronizar con Excel vía n8n.
+    modo: "ingreso" (6 columnas) | "salida" (4 columnas)
     """
-    with st.container(border=True):
-        st.markdown("### 📋 Tabla de Inventario Verificada")
-        st.caption("Revisa o corrige cualquier dato haciendo doble clic en la celda antes de confirmar.")
+    es_salida = (modo == "salida")
+    accion = "egreso" if es_salida else "ingreso"
+    session_key = "inventory_data_salida" if es_salida else "inventory_data_ingreso"
 
-        datos_actuales = st.session_state.get("inventory_data", [])
+    if session_key not in st.session_state:
+        st.session_state[session_key] = []
+
+    with st.container(border=True):
+        if es_salida:
+            st.markdown("### 📋 Tabla de Salida / Ventas Verificada")
+            st.caption("Revisa los productos y las unidades vendidas antes de descontar del inventario.")
+        else:
+            st.markdown("### 📋 Tabla de Inventario Verificada (Ingreso)")
+            st.caption("Revisa o corrige cualquier dato haciendo doble clic en la celda antes de confirmar.")
+
+        datos_actuales = st.session_state.get(session_key, [])
         
         # Métricas resumidas superiores
         total_items = len(datos_actuales)
-        total_stock = sum(item.get("stock", 0) for item in datos_actuales)
+        if es_salida:
+            total_unidades = sum(int(item.get("cantidad_salida", item.get("stock", 0)) or 0) for item in datos_actuales)
+            label_unidades = "📉 Unidades a Descontar"
+        else:
+            total_unidades = sum(int(item.get("stock", 0) or 0) for item in datos_actuales)
+            label_unidades = "📊 Stock Total Acumulado"
 
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             st.metric(label="📦 Productos Registrados", value=f"{total_items} ítems")
         with col_m2:
-            st.metric(label="📊 Stock Total Acumulado", value=f"{total_stock} uds")
+            st.metric(label=label_unidades, value=f"{total_unidades} uds")
         with col_m3:
             estado_label = "Listo para enviar" if total_items > 0 else "Sin registros"
             st.metric(label="⚡ Estado", value=estado_label)
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
+        if es_salida:
+            columnas_esperadas = ["nombre", "codigo_barras", "referencia_proveedor", "cantidad_salida"]
+            config_columnas = {
+                "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True,  width="large"),
+                "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, width="small", help="EAN-13 u otro código de barras"),
+                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",       required=False, width="small", help="Código interno del proveedor"),
+                "cantidad_salida":      st.column_config.NumberColumn("Cant. Vendida",      min_value=1, step=1, required=True, default=1, width="small"),
+            }
+        else:
+            columnas_esperadas = ["nombre", "codigo_barras", "referencia_proveedor", "stock", "stock_minimo", "precio"]
+            config_columnas = {
+                "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True,  width="large"),
+                "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, width="small",  help="EAN-13 u otro código de barras"),
+                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",       required=False, width="small",  help="Código interno del proveedor"),
+                "stock":                st.column_config.NumberColumn("Stock",              min_value=0, step=1,    required=True,  default=1,   width="small"),
+                "stock_minimo":         st.column_config.NumberColumn("Stock Mín.",         min_value=0, step=1,    required=False, default=0,   width="small"),
+                "precio":               st.column_config.NumberColumn("Precio",             min_value=0, step=0.01, required=False, default=0.0, width="small", format="%.2f"),
+            }
+
         if not datos_actuales:
             st.info("ℹ️ Aún no hay productos en la tabla. Toma una foto en el panel izquierdo para añadir registros automáticamente.", icon="📷")
-            df_vacio = pd.DataFrame(columns=["nombre", "codigo_barras", "referencia_proveedor", "stock", "stock_minimo", "precio"])
-            # Permitir agregar manualmente incluso si está vacío
+            df_vacio = pd.DataFrame(columns=columnas_esperadas)
             df_editado = st.data_editor(
                 df_vacio,
                 num_rows="dynamic",
                 use_container_width=True,
-                column_config={
-                    "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True),
-                    "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, help="EAN-13 u otro código de barras"),
-                    "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",        required=False, help="Código interno del proveedor"),
-                    "stock":               st.column_config.NumberColumn("Stock",         min_value=0, step=1,    required=True,  default=1),
-                    "stock_minimo":         st.column_config.NumberColumn("Stock Mínimo",  min_value=0, step=1,    required=False, default=0),
-                    "precio":              st.column_config.NumberColumn("Precio",         min_value=0, step=0.01, required=False, default=0.0, format="%.2f"),
-                },
-                key="empty_editor"
+                column_config=config_columnas,
+                key=f"empty_editor_{modo}"
             )
             if not df_editado.empty:
-                st.session_state["inventory_data"] = df_editado.to_dict(orient="records")
+                st.session_state[session_key] = df_editado.to_dict(orient="records")
                 st.rerun()
             return
 
-        # --- Migración de esquema: garantizar los 6 campos sin importar el origen ---
-        COLUMNAS_ESPERADAS = ["nombre", "codigo_barras", "referencia_proveedor", "stock", "stock_minimo", "precio"]
+        # --- Migración de esquema según el modo ---
         datos_migrados = []
         for item in datos_actuales:
-            datos_migrados.append({
-                "nombre":               str(item.get("nombre", "")).strip(),
-                # Compatibilidad con esquema antiguo (campo 'codigo' único)
-                "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", ""))).strip(),
-                "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", ""))).strip(),
-                "stock":               int(item.get("stock", 0)),
-                "stock_minimo":         int(item.get("stock_minimo", item.get("min_stock", 0))),
-                "precio":              float(item.get("precio", item.get("price", 0.0))),
-            })
+            if es_salida:
+                cant_val = item.get("cantidad_salida", item.get("cantidad_vendida", item.get("stock", 1)))
+                datos_migrados.append({
+                    "nombre":               str(item.get("nombre", "") or "").strip(),
+                    "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", "")) or "").strip(),
+                    "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", "")) or "").strip(),
+                    "cantidad_salida":      int(cant_val if pd.notna(cant_val) and cant_val is not None else 1),
+                })
+            else:
+                stock_val = item.get("stock", 0)
+                min_val = item.get("stock_minimo", item.get("min_stock", 0))
+                precio_val = item.get("precio", item.get("price", 0.0))
+                datos_migrados.append({
+                    "nombre":               str(item.get("nombre", "") or "").strip(),
+                    "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", "")) or "").strip(),
+                    "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", "")) or "").strip(),
+                    "stock":                int(stock_val if pd.notna(stock_val) and stock_val is not None else 0),
+                    "stock_minimo":         int(min_val if pd.notna(min_val) and min_val is not None else 0),
+                    "precio":               float(precio_val if pd.notna(precio_val) and precio_val is not None else 0.0),
+                })
 
-        # Actualizar sesión si hubo migración
         if datos_migrados != datos_actuales:
-            st.session_state["inventory_data"] = datos_migrados
+            st.session_state[session_key] = datos_migrados
             datos_actuales = datos_migrados
 
-        # Convertir a DataFrame — solo las columnas esperadas, en orden correcto
-        df = pd.DataFrame(datos_migrados, columns=COLUMNAS_ESPERADAS)
+        df = pd.DataFrame(datos_migrados, columns=columnas_esperadas)
 
-        # Editor de datos interactivo con validación de columnas
         df_editado = st.data_editor(
             df,
             num_rows="dynamic",
             use_container_width=True,
-            column_config={
-                "nombre":               st.column_config.TextColumn("Nombre del Producto",  required=True,  width="large"),
-                "codigo_barras":        st.column_config.TextColumn("Cód. Barras",          required=False, width="small",  help="EAN-13 u otro código de barras"),
-                "referencia_proveedor": st.column_config.TextColumn("Ref. Proveedor",        required=False, width="small",  help="Código interno del proveedor"),
-                "stock":               st.column_config.NumberColumn("Stock",        min_value=0, step=1,    required=True,  width="small"),
-                "stock_minimo":         st.column_config.NumberColumn("Stock Mín.",   min_value=0, step=1,    required=False, width="small"),
-                "precio":              st.column_config.NumberColumn("Precio",        min_value=0, step=0.01, required=False, width="small", format="%.2f"),
-            },
-            key="inventory_editor"
+            column_config=config_columnas,
+            key=f"inventory_editor_{modo}"
         )
 
-        # Actualizar datos en sesión si hubo cambios manuales
         datos_actualizados = df_editado.to_dict(orient="records")
         if datos_actualizados != datos_actuales:
-            st.session_state["inventory_data"] = datos_actualizados
+            st.session_state[session_key] = datos_actualizados
 
         st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
-        # Barra de acciones al final de la tabla
         col_accion_secundaria, col_accion_primaria = st.columns([1, 1.6])
 
         with col_accion_secundaria:
-            if st.button("🗑️ Vaciar Tabla", type="secondary", use_container_width=True):
-                st.session_state["inventory_data"] = []
+            if st.button("🗑️ Vaciar Tabla", type="secondary", use_container_width=True, key=f"btn_vaciar_{modo}"):
+                st.session_state[session_key] = []
                 st.toast("Tabla vaciada.", icon="🧹")
                 st.rerun()
 
         with col_accion_primaria:
+            texto_boton = "🚀 Confirmar y Descontar Stock" if es_salida else "🚀 Confirmar y Enviar a Excel"
             boton_confirmar = st.button(
-                "🚀 Confirmar y Enviar a Excel", 
+                texto_boton, 
                 type="primary", 
                 use_container_width=True,
-                disabled=(total_items == 0)
+                disabled=(total_items == 0),
+                key=f"btn_confirmar_{modo}"
             )
 
         if boton_confirmar:
-            with st.spinner("📤 Enviando datos confirmados a n8n para estructurar en Excel..."):
-                exito, mensaje, es_mock = enviar_datos_a_excel_n8n(st.session_state["inventory_data"])
+            with st.spinner("📤 Enviando datos confirmados a n8n para actualizar Excel..."):
+                exito, mensaje, es_mock = enviar_datos_a_excel_n8n(
+                    st.session_state[session_key],
+                    accion=accion
+                )
                 
                 if exito:
                     st.balloons()
-                    st.toast(f"✅ ¡Inventario guardado en Excel exitosamente!", icon="🎉")
+                    st.toast("✅ ¡Operación sincronizada con Excel exitosamente!", icon="🎉")
                     st.success(mensaje)
-                    # Opción: Si el usuario desea limpiar después de enviar
                     st.info("💡 Puedes vaciar la tabla para iniciar un nuevo lote de escaneo cuando gustes.")
                 else:
                     st.error(f"❌ {mensaje}")
