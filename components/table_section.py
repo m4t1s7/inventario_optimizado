@@ -2,6 +2,15 @@ import streamlit as st
 import pandas as pd
 from services.n8n_service import enviar_datos_a_excel_n8n
 
+
+def _limpiar_texto(val) -> str:
+    """Convierte None, NaN de pandas o textos 'nan'/'none' en cadena vacía ''."""
+    if val is None or pd.isna(val):
+        return ""
+    texto = str(val).strip()
+    return "" if texto.lower() in ("nan", "none", "null") else texto
+
+
 def render_table_section(modo: str = "ingreso"):
     """
     Renderiza la tabla interactiva de inventario editable, las métricas acumuladas
@@ -75,7 +84,7 @@ def render_table_section(modo: str = "ingreso"):
                 key=f"empty_editor_{modo}"
             )
             if not df_editado.empty:
-                st.session_state[session_key] = df_editado.to_dict(orient="records")
+                st.session_state[session_key] = df_editado.fillna("").to_dict(orient="records")
                 st.rerun()
             return
 
@@ -85,22 +94,22 @@ def render_table_section(modo: str = "ingreso"):
             if es_salida:
                 cant_val = item.get("cantidad_salida", item.get("cantidad_vendida", item.get("stock", 1)))
                 datos_migrados.append({
-                    "nombre":               str(item.get("nombre", "") or "").strip(),
-                    "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", "")) or "").strip(),
-                    "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", "")) or "").strip(),
-                    "cantidad_salida":      int(cant_val if pd.notna(cant_val) and cant_val is not None else 1),
+                    "nombre":               _limpiar_texto(item.get("nombre", "")),
+                    "codigo_barras":        _limpiar_texto(item.get("codigo_barras", item.get("barcode", ""))),
+                    "referencia_proveedor": _limpiar_texto(item.get("referencia_proveedor", item.get("codigo", ""))),
+                    "cantidad_salida":      int(cant_val if pd.notna(cant_val) and cant_val is not None and str(cant_val) != "" else 1),
                 })
             else:
                 stock_val = item.get("stock", 0)
                 min_val = item.get("stock_minimo", item.get("min_stock", 0))
                 precio_val = item.get("precio", item.get("price", 0.0))
                 datos_migrados.append({
-                    "nombre":               str(item.get("nombre", "") or "").strip(),
-                    "codigo_barras":        str(item.get("codigo_barras", item.get("barcode", "")) or "").strip(),
-                    "referencia_proveedor": str(item.get("referencia_proveedor", item.get("codigo", "")) or "").strip(),
-                    "stock":                int(stock_val if pd.notna(stock_val) and stock_val is not None else 0),
-                    "stock_minimo":         int(min_val if pd.notna(min_val) and min_val is not None else 0),
-                    "precio":               float(precio_val if pd.notna(precio_val) and precio_val is not None else 0.0),
+                    "nombre":               _limpiar_texto(item.get("nombre", "")),
+                    "codigo_barras":        _limpiar_texto(item.get("codigo_barras", item.get("barcode", ""))),
+                    "referencia_proveedor": _limpiar_texto(item.get("referencia_proveedor", item.get("codigo", ""))),
+                    "stock":                int(stock_val if pd.notna(stock_val) and stock_val is not None and str(stock_val) != "" else 0),
+                    "stock_minimo":         int(min_val if pd.notna(min_val) and min_val is not None and str(min_val) != "" else 0),
+                    "precio":               float(precio_val if pd.notna(precio_val) and precio_val is not None and str(precio_val) != "" else 0.0),
                 })
 
         if datos_migrados != datos_actuales:
@@ -117,7 +126,31 @@ def render_table_section(modo: str = "ingreso"):
             key=f"inventory_editor_{modo}"
         )
 
-        datos_actualizados = df_editado.to_dict(orient="records")
+        # Limpiar cualquier NaN que pandas genere al agregar o editar filas
+        registros_editados = df_editado.to_dict(orient="records")
+        datos_actualizados = []
+        for reg in registros_editados:
+            if es_salida:
+                c_val = reg.get("cantidad_salida", 1)
+                datos_actualizados.append({
+                    "nombre":               _limpiar_texto(reg.get("nombre", "")),
+                    "codigo_barras":        _limpiar_texto(reg.get("codigo_barras", "")),
+                    "referencia_proveedor": _limpiar_texto(reg.get("referencia_proveedor", "")),
+                    "cantidad_salida":      int(c_val if pd.notna(c_val) and c_val is not None and str(c_val) != "" else 1),
+                })
+            else:
+                s_val = reg.get("stock", 0)
+                m_val = reg.get("stock_minimo", 0)
+                p_val = reg.get("precio", 0.0)
+                datos_actualizados.append({
+                    "nombre":               _limpiar_texto(reg.get("nombre", "")),
+                    "codigo_barras":        _limpiar_texto(reg.get("codigo_barras", "")),
+                    "referencia_proveedor": _limpiar_texto(reg.get("referencia_proveedor", "")),
+                    "stock":                int(s_val if pd.notna(s_val) and s_val is not None and str(s_val) != "" else 0),
+                    "stock_minimo":         int(m_val if pd.notna(m_val) and m_val is not None and str(m_val) != "" else 0),
+                    "precio":               float(p_val if pd.notna(p_val) and p_val is not None and str(p_val) != "" else 0.0),
+                })
+
         if datos_actualizados != datos_actuales:
             st.session_state[session_key] = datos_actualizados
 

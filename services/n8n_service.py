@@ -10,7 +10,15 @@ from config import (
     ENABLE_MOCK_FALLBACK,
 )
 
+def _clean_str(val: Any, default: str = "") -> str:
+    if val is None:
+        return default
+    s = str(val).strip()
+    return default if s.lower() in ("none", "null", "nan") else s
+
+
 MOCK_CATALOG = [
+
     {"nombre": "Café Grano Especial 500g",       "codigo_barras": "7701234500018", "referencia_proveedor": "CAF-8921", "stock": 18, "stock_minimo": 5,  "precio": 12500},
     {"nombre": "Galletas Avena & Miel 250g",       "codigo_barras": "7701234500025", "referencia_proveedor": "GAL-4410", "stock": 35, "stock_minimo": 10, "precio": 3800},
     {"nombre": "Bebida Energética Citrus 473ml",   "codigo_barras": "7701234500032", "referencia_proveedor": "BEB-1093", "stock": 24, "stock_minimo": 8,  "precio": 5200},
@@ -82,25 +90,31 @@ def extraer_datos_imagen_n8n(
             
             lista_normalizada = []
             for p in productos:
+                raw_nombre = p.get("nombre") or p.get("name") or "Producto Desconocido"
+                raw_barras = p.get("codigo_barras") or p.get("barcode") or p.get("ean") or ""
+                raw_ref = p.get("referencia_proveedor") or p.get("referencia") or p.get("sku") or p.get("ref") or ""
                 if accion == "egreso":
                     cantidad_val = p.get(
                         "cantidad_salida",
                         p.get("cantidad_vendida", p.get("cantidad", p.get("stock", p.get("quantity", 1))))
                     )
                     lista_normalizada.append({
-                        "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
-                        "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
-                        "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
+                        "nombre":               _clean_str(raw_nombre, "Producto Desconocido"),
+                        "codigo_barras":        _clean_str(raw_barras, ""),
+                        "referencia_proveedor": _clean_str(raw_ref, ""),
                         "cantidad_salida":      int(cantidad_val if cantidad_val is not None else 1),
                     })
                 else:
+                    stock_val = p.get("stock", p.get("cantidad", p.get("quantity", 1)))
+                    min_val = p.get("stock_minimo", p.get("min_stock", p.get("minimo", 0)))
+                    precio_val = p.get("precio", p.get("price", p.get("valor", 0.0)))
                     lista_normalizada.append({
-                        "nombre":               str(p.get("nombre", p.get("name", "Producto Desconocido"))).strip(),
-                        "codigo_barras":        str(p.get("codigo_barras", p.get("barcode", p.get("ean", "")))).strip(),
-                        "referencia_proveedor": str(p.get("referencia_proveedor", p.get("referencia", p.get("sku", p.get("ref", ""))))).strip(),
-                        "stock":                int(p.get("stock", p.get("cantidad", p.get("quantity", 1)))),
-                        "stock_minimo":         int(p.get("stock_minimo", p.get("min_stock", p.get("minimo", 0)))),
-                        "precio":               float(p.get("precio", p.get("price", p.get("valor", 0.0))))
+                        "nombre":               _clean_str(raw_nombre, "Producto Desconocido"),
+                        "codigo_barras":        _clean_str(raw_barras, ""),
+                        "referencia_proveedor": _clean_str(raw_ref, ""),
+                        "stock":                int(stock_val if stock_val is not None else 1),
+                        "stock_minimo":         int(min_val if min_val is not None else 0),
+                        "precio":               float(precio_val if precio_val is not None else 0.0)
                     })
 
             if not lista_normalizada:
