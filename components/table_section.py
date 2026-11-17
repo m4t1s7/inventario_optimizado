@@ -121,6 +121,25 @@ def render_table_section(modo: str = "ingreso"):
         if datos_actualizados != datos_actuales:
             st.session_state[session_key] = datos_actualizados
 
+        # Validar que cada producto tenga al menos uno de los dos códigos
+        productos_sin_codigo = []
+        for idx, item in enumerate(st.session_state[session_key], start=1):
+            cod_barras = str(item.get("codigo_barras") or "").strip()
+            if cod_barras.lower() == "nan":
+                cod_barras = ""
+            ref_prov = str(item.get("referencia_proveedor") or "").strip()
+            if ref_prov.lower() == "nan":
+                ref_prov = ""
+            if not cod_barras and not ref_prov:
+                nombre_prod = str(item.get("nombre") or f"Fila #{idx}").strip()
+                productos_sin_codigo.append(f"Fila {idx} ({nombre_prod})")
+
+        if productos_sin_codigo:
+            st.warning(
+                f"⚠️ **Falta código identificador:** Cada producto debe tener al menos **Cód. Barras** o **Ref. Proveedor**. "
+                f"Revisa: {', '.join(productos_sin_codigo)}."
+            )
+
         st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
         col_accion_secundaria, col_accion_primaria = st.columns([1, 1.6])
@@ -142,16 +161,21 @@ def render_table_section(modo: str = "ingreso"):
             )
 
         if boton_confirmar:
-            with st.spinner("📤 Enviando datos confirmados a n8n para actualizar Excel..."):
-                exito, mensaje, es_mock = enviar_datos_a_excel_n8n(
-                    st.session_state[session_key],
-                    accion=accion
+            if productos_sin_codigo:
+                st.error(
+                    f"❌ No se puede enviar a Excel: {len(productos_sin_codigo)} producto(s) no tienen ni Código de Barras ni Ref. Proveedor ({', '.join(productos_sin_codigo)}). Completa al menos uno en la tabla."
                 )
-                
-                if exito:
-                    st.balloons()
-                    st.toast("✅ ¡Operación sincronizada con Excel exitosamente!", icon="🎉")
-                    st.success(mensaje)
-                    st.info("💡 Puedes vaciar la tabla para iniciar un nuevo lote de escaneo cuando gustes.")
-                else:
-                    st.error(f"❌ {mensaje}")
+            else:
+                with st.spinner("📤 Enviando datos confirmados a n8n para actualizar Excel..."):
+                    exito, mensaje, es_mock = enviar_datos_a_excel_n8n(
+                        st.session_state[session_key],
+                        accion=accion
+                    )
+                    
+                    if exito:
+                        st.balloons()
+                        st.toast("✅ ¡Operación sincronizada con Excel exitosamente!", icon="🎉")
+                        st.success(mensaje)
+                        st.info("💡 Puedes vaciar la tabla para iniciar un nuevo lote de escaneo cuando gustes.")
+                    else:
+                        st.error(f"❌ {mensaje}")
