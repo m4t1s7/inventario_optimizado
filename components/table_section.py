@@ -20,6 +20,7 @@ def render_table_section(modo: str = "ingreso"):
     es_salida = (modo == "salida")
     accion = "egreso" if es_salida else "ingreso"
     session_key = "inventory_data_salida" if es_salida else "inventory_data_ingreso"
+    feedback_key = f"last_sync_feedback_{modo}"
 
     if session_key not in st.session_state:
         st.session_state[session_key] = []
@@ -31,6 +32,38 @@ def render_table_section(modo: str = "ingreso"):
         else:
             st.markdown("### 📋 Tabla de Inventario Verificada (Ingreso)")
             st.caption("Revisa o corrige cualquier dato haciendo doble clic en la celda antes de confirmar.")
+
+        # Mostrar resultado de la última sincronización si existe
+        feedback = st.session_state.pop(feedback_key, None)
+        if feedback:
+            if feedback.get("balloons"):
+                st.balloons()
+            if feedback.get("exito_total"):
+                st.success(f"✅ {feedback['mensaje']}")
+            else:
+                procesados_fb = feedback.get("procesados", [])
+                fallidos_fb = feedback.get("fallidos", [])
+                if procesados_fb:
+                    nombres_ok = ", ".join(str(p.get("nombre", "Producto")) for p in procesados_fb)
+                    st.success(
+                        f"✅ **{len(procesados_fb)} producto(s) descontados/actualizados en Excel** y retirados de la tabla: {nombres_ok}."
+                    )
+                if fallidos_fb:
+                    lineas_error = []
+                    for f_item in fallidos_fb:
+                        nom = f_item.get("nombre") or "Producto sin nombre"
+                        cod = f_item.get("codigo_barras") or ""
+                        ref = f_item.get("referencia_proveedor") or ""
+                        cant = f_item.get("cantidad_salida", f_item.get("stock", ""))
+                        motivo = f_item.get("motivo") or "Error al procesar en inventario"
+                        id_str = f"Cód: `{cod}`" if cod else (f"Ref: `{ref}`" if ref else "Sin código")
+                        lineas_error.append(f"- **{nom}** ({id_str} · Cant: `{cant}`): **{motivo}**")
+                    detalle_md = "\n".join(lineas_error)
+                    st.error(
+                        f"❌ **{len(fallidos_fb)} producto(s) no se pudieron procesar y permanecen en la tabla para que los corrijas:**\n\n{detalle_md}"
+                    )
+                else:
+                    st.error(f"❌ {feedback.get('mensaje', 'Error al sincronizar con Excel.')}")
 
         datos_actuales = st.session_state.get(session_key, [])
         
@@ -199,16 +232,39 @@ def render_table_section(modo: str = "ingreso"):
                     f"❌ No se puede enviar a Excel: {len(productos_sin_codigo)} producto(s) no tienen ni Código de Barras ni Ref. Proveedor ({', '.join(productos_sin_codigo)}). Completa al menos uno en la tabla."
                 )
             else:
-                with st.spinner("📤 Enviando datos confirmados a n8n para actualizar Excel..."):
-                    exito, mensaje, es_mock = enviar_datos_a_excel_n8n(
+                with st.spinner("📤 Sincronizando lote con Google Sheets / Excel vía n8n..."):
+                    exito, mensaje, es_mock, procesados, fallidos = enviar_datos_a_excel_n8n(
                         st.session_state[session_key],
                         accion=accion
                     )
                     
-                    if exito:
-                        st.balloons()
+                    if exito and not fallidos:
+                        # Todos se procesaron con éxito: vaciar la tabla para evitar envíos duplicados
+                        st.session_state[session_key] = []
+                        st.session_state[feedback_key] = {
+                            "exito_total": True,
+                            "balloons": True,
+                            "mensaje": mensaje,
+                            "procesados": procesados,
+                            "fallidos": [],
+                        }
                         st.toast("✅ ¡Operación sincronizada con Excel exitosamente!", icon="🎉")
-                        st.success(mensaje)
-                        st.info("💡 Puedes vaciar la tabla para iniciar un nuevo lote de escaneo cuando gustes.")
+                        st.rerun()
+                    elif fallidos:
+                        # Éxito parcial o fallo en ítems: dejar en la tabla SOLO los fallidos (sin el campo extra 'motivo')
+                        filas_restantes = []
+                        for f_item in fallidos:
+                            copia = {k: v for k, v in f_item.items() if k != "motivo"}
+                            filas_restantes.append(copia)
+                        st.session_state[session_key] = filas_restantes
+                        st.session_state[feedback_key] = {
+                            "exito_total": False,
+                            "balloons": False,
+                            "mensaje": mensaje,
+                            "procesados": procesados,
+                            "fallidos": fallidos,
+                        }
+                        st.toast(f"⚠️ {len(fallidos)} producto(s) requieren revisión.", icon="⚠️")
+                        st.rerun()
                     else:
                         st.error(f"❌ {mensaje}")

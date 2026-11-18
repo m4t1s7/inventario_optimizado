@@ -133,22 +133,28 @@ def extraer_datos_imagen_n8n(
 def enviar_datos_a_excel_n8n(
     productos: List[Dict[str, Any]],
     accion: str = "ingreso",
-) -> Tuple[bool, str, bool]:
+) -> Tuple[bool, str, bool, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Envía la tabla de productos confirmados al webhook único N8N_EXCEL_WEBHOOK_URL.
     accion: "ingreso" | "egreso"
-    Retorna: (éxito, mensaje, es_modo_simulacion)
+    Retorna: (éxito_total, mensaje, es_modo_simulacion, lista_procesados, lista_fallidos)
     """
     if not productos:
-        return False, "La tabla está vacía. No hay datos para enviar.", False
+        return False, "La tabla está vacía. No hay datos para enviar.", False, [], []
 
     is_placeholder_url = not N8N_EXCEL_WEBHOOK_URL or "tu-instancia-n8n.com" in N8N_EXCEL_WEBHOOK_URL
 
     if is_placeholder_url:
         if ENABLE_MOCK_FALLBACK:
             time.sleep(1.0)
-            return True, f"¡Éxito simulado! Se confirmaron {len(productos)} productos ({accion}) para Excel.", True
-        return False, "No se ha configurado la URL del Webhook de Excel (N8N_EXCEL_WEBHOOK_URL).", False
+            return (
+                True,
+                f"¡Éxito simulado! Se confirmaron {len(productos)} productos ({accion}) para Excel.",
+                True,
+                productos,
+                [],
+            )
+        return False, "No se ha configurado la URL del Webhook de Excel (N8N_EXCEL_WEBHOOK_URL).", False, [], []
 
     try:
         payload = {
@@ -163,15 +169,44 @@ def enviar_datos_a_excel_n8n(
             N8N_EXCEL_WEBHOOK_URL,
             data=json.dumps(payload),
             headers=headers,
-            timeout=25
+            timeout=60
         )
 
         if response.status_code in (200, 201):
-            return True, f"¡{len(productos)} registros enviados y procesados en Excel con éxito!", False
+            try:
+                res_json = response.json()
+                if isinstance(res_json, list) and len(res_json) > 0:
+                    res_json = res_json[0]
+            except Exception:
+                res_json = None
+
+            if isinstance(res_json, dict):
+                procesados = res_json.get("procesados", [])
+                if not isinstance(procesados, list):
+                    procesados = []
+                fallidos = res_json.get("fallidos", [])
+                if not isinstance(fallidos, list):
+                    fallidos = []
+
+                ok_flag = bool(res_json.get("ok", len(fallidos) == 0))
+                mensaje_srv = str(res_json.get("mensaje") or "").strip()
+
+                if ok_flag and len(fallidos) == 0:
+                    total_ok = len(procesados) if procesados else len(productos)
+                    msg = mensaje_srv or f"¡{total_ok} producto(s) sincronizados en Excel con éxito!"
+                    return True, msg, False, procesados or productos, []
+                else:
+                    msg = (
+                        f"Se procesaron {len(procesados)} producto(s) correctamente, "
+                        f"pero {len(fallidos)} producto(s) no pudieron procesarse."
+                    )
+                    return False, msg, False, procesados, fallidos
+
+            return True, f"¡{len(productos)} registros enviados y procesados en Excel con éxito!", False, productos, []
         
-        return False, f"Error en webhook de Excel (HTTP {response.status_code}): {response.text[:150]}", False
+        return False, f"Error en webhook de Excel (HTTP {response.status_code}): {response.text[:150]}", False, [], []
 
     except requests.exceptions.RequestException as e:
-        return False, f"Fallo al conectar con n8n Excel: {str(e)}", False
+        return False, f"Fallo al conectar con n8n Excel: {str(e)}", False, [], []
     except Exception as e:
-        return False, f"Error inesperado: {str(e)}", False
+        return False, f"Error inesperado: {str(e)}", False, [], []
